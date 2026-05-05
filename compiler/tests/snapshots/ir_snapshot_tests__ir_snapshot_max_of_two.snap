@@ -1,0 +1,32 @@
+---
+source: tests/ir_snapshot_tests.rs
+expression: ir
+---
+; ModuleID = 'pyferro'
+source_filename = "pyferro"
+
+@print_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
+
+; Function Attrs: nofree nounwind
+declare noundef i32 @printf(ptr noundef readonly captures(none), ...) local_unnamed_addr #0
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define i64 @max_of_two(i64 %a, i64 %b) local_unnamed_addr #1 {
+entry:
+  %a.b = tail call i64 @llvm.smax.i64(i64 %a, i64 %b)
+  ret i64 %a.b
+}
+
+; Function Attrs: nofree nounwind
+define noundef i32 @main() local_unnamed_addr #0 {
+entry:
+  %print_call = tail call i32 (ptr, ...) @printf(ptr nonnull dereferenceable(1) @print_fmt, i64 7)
+  ret i32 0
+}
+
+; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
+declare i64 @llvm.smax.i64(i64, i64) #2
+
+attributes #0 = { nofree nounwind }
+attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
+attributes #2 = { nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none) }

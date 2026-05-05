@@ -1,0 +1,30 @@
+---
+source: tests/ir_snapshot_tests.rs
+expression: ir
+---
+; ModuleID = 'pyferro'
+source_filename = "pyferro"
+
+@str = private unnamed_addr constant [5 x i8] c"true\00", align 1
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define i1 @both_positive(i64 %x, i64 %y) local_unnamed_addr #0 {
+entry:
+  %cmptmp = icmp sgt i64 %x, 0
+  %cmptmp1 = icmp sgt i64 %y, 0
+  %andtmp = and i1 %cmptmp, %cmptmp1
+  ret i1 %andtmp
+}
+
+; Function Attrs: nofree nounwind
+define noundef i32 @main() local_unnamed_addr #1 {
+entry:
+  %puts = tail call i32 @puts(ptr nonnull dereferenceable(1) @str)
+  ret i32 0
+}
+
+; Function Attrs: nofree nounwind
+declare noundef i32 @puts(ptr noundef readonly captures(none)) local_unnamed_addr #1
+
+attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
+attributes #1 = { nofree nounwind }

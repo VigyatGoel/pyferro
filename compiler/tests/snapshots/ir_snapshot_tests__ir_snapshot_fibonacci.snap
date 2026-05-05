@@ -1,0 +1,41 @@
+---
+source: tests/ir_snapshot_tests.rs
+expression: ir
+---
+; ModuleID = 'pyferro'
+source_filename = "pyferro"
+
+@print_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
+
+; Function Attrs: nofree nounwind
+declare noundef i32 @printf(ptr noundef readonly captures(none), ...) local_unnamed_addr #0
+
+; Function Attrs: nofree norecurse nosync nounwind memory(none)
+define i64 @fibonacci(i64 %n) local_unnamed_addr #1 {
+entry:
+  %cmptmp12 = icmp sgt i64 %n, 0
+  br i1 %cmptmp12, label %loop_body, label %loop_exit
+
+loop_body:                                        ; preds = %entry, %loop_body
+  %a.015 = phi i64 [ %b.014, %loop_body ], [ 0, %entry ]
+  %b.014 = phi i64 [ %addtmp, %loop_body ], [ 1, %entry ]
+  %i.013 = phi i64 [ %addtmp7, %loop_body ], [ 0, %entry ]
+  %addtmp = add i64 %a.015, %b.014
+  %addtmp7 = add nuw nsw i64 %i.013, 1
+  %cmptmp = icmp slt i64 %addtmp7, %n
+  br i1 %cmptmp, label %loop_body, label %loop_exit
+
+loop_exit:                                        ; preds = %loop_body, %entry
+  %a.0.lcssa = phi i64 [ 0, %entry ], [ %b.014, %loop_body ]
+  ret i64 %a.0.lcssa
+}
+
+; Function Attrs: nofree nounwind
+define noundef i32 @main() local_unnamed_addr #0 {
+entry:
+  %print_call = tail call i32 (ptr, ...) @printf(ptr nonnull dereferenceable(1) @print_fmt, i64 55)
+  ret i32 0
+}
+
+attributes #0 = { nofree nounwind }
+attributes #1 = { nofree norecurse nosync nounwind memory(none) }

@@ -1,0 +1,36 @@
+target/
+**/target/
+
+# Python-generated files
+**/__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+
+# Compiled artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Specific binaries in this project
+compiler/bench_compiled
+compiler/factorial
+compiler/output
+test_env/test
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

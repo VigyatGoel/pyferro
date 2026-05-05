@@ -1,0 +1,93 @@
+---
+source: tests/ir_snapshot_tests.rs
+expression: ir
+---
+; ModuleID = 'pyferro'
+source_filename = "pyferro"
+
+@print_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
+
+; Function Attrs: nofree nounwind
+declare noundef i32 @printf(ptr noundef readonly captures(none), ...) local_unnamed_addr #0
+
+; Function Attrs: nofree norecurse nosync nounwind memory(none)
+define i64 @factorial(i64 %n) local_unnamed_addr #1 {
+entry:
+  %cmptmp.not9 = icmp slt i64 %n, 1
+  br i1 %cmptmp.not9, label %loop_exit, label %loop_body.preheader
+
+loop_body.preheader:                              ; preds = %entry
+  %min.iters.check = icmp ult i64 %n, 4
+  br i1 %min.iters.check, label %loop_body.preheader17, label %vector.scevcheck
+
+vector.scevcheck:                                 ; preds = %loop_body.preheader
+  %0 = zext nneg i64 %n to i128
+  %1 = add nsw i128 %0, -1
+  %2 = trunc nsw i128 %1 to i64
+  %3 = icmp ugt i64 %2, 9223372036854775805
+  %4 = icmp ugt i128 %1, 18446744073709551615
+  %5 = or i1 %3, %4
+  br i1 %5, label %loop_body.preheader17, label %vector.ph
+
+vector.ph:                                        ; preds = %vector.scevcheck
+  %n.vec = and i64 %n, 9223372036854775804
+  %6 = or disjoint i64 %n.vec, 1
+  br label %vector.body
+
+vector.body:                                      ; preds = %vector.body, %vector.ph
+  %index = phi i64 [ 0, %vector.ph ], [ %index.next, %vector.body ]
+  %vec.phi = phi i64 [ 1, %vector.ph ], [ %10, %vector.body ]
+  %vec.phi12 = phi i64 [ 1, %vector.ph ], [ %11, %vector.body ]
+  %vec.phi13 = phi i64 [ 1, %vector.ph ], [ %12, %vector.body ]
+  %vec.phi14 = phi i64 [ 1, %vector.ph ], [ %13, %vector.body ]
+  %offset.idx = or disjoint i64 %index, 1
+  %7 = or disjoint i64 %index, 2
+  %8 = or disjoint i64 %index, 3
+  %9 = add i64 %index, 4
+  %10 = mul i64 %vec.phi, %offset.idx
+  %11 = mul i64 %vec.phi12, %7
+  %12 = mul i64 %vec.phi13, %8
+  %13 = mul i64 %vec.phi14, %9
+  %index.next = add nuw i64 %index, 4
+  %14 = icmp eq i64 %index.next, %n.vec
+  br i1 %14, label %middle.block, label %vector.body, !llvm.loop !0
+
+middle.block:                                     ; preds = %vector.body
+  %bin.rdx = mul i64 %11, %10
+  %bin.rdx15 = mul i64 %12, %bin.rdx
+  %bin.rdx16 = mul i64 %13, %bin.rdx15
+  %cmp.n = icmp eq i64 %n, %n.vec
+  br i1 %cmp.n, label %loop_exit, label %loop_body.preheader17
+
+loop_body.preheader17:                            ; preds = %vector.scevcheck, %loop_body.preheader, %middle.block
+  %result.011.ph = phi i64 [ 1, %vector.scevcheck ], [ 1, %loop_body.preheader ], [ %bin.rdx16, %middle.block ]
+  %i.010.ph = phi i64 [ 1, %vector.scevcheck ], [ 1, %loop_body.preheader ], [ %6, %middle.block ]
+  br label %loop_body
+
+loop_body:                                        ; preds = %loop_body.preheader17, %loop_body
+  %result.011 = phi i64 [ %multmp, %loop_body ], [ %result.011.ph, %loop_body.preheader17 ]
+  %i.010 = phi i64 [ %addtmp, %loop_body ], [ %i.010.ph, %loop_body.preheader17 ]
+  %multmp = mul i64 %result.011, %i.010
+  %addtmp = add i64 %i.010, 1
+  %cmptmp.not = icmp sgt i64 %addtmp, %n
+  br i1 %cmptmp.not, label %loop_exit, label %loop_body, !llvm.loop !3
+
+loop_exit:                                        ; preds = %loop_body, %middle.block, %entry
+  %result.0.lcssa = phi i64 [ 1, %entry ], [ %bin.rdx16, %middle.block ], [ %multmp, %loop_body ]
+  ret i64 %result.0.lcssa
+}
+
+; Function Attrs: nofree nounwind
+define noundef i32 @main() local_unnamed_addr #0 {
+entry:
+  %print_call = tail call i32 (ptr, ...) @printf(ptr nonnull dereferenceable(1) @print_fmt, i64 120)
+  ret i32 0
+}
+
+attributes #0 = { nofree nounwind }
+attributes #1 = { nofree norecurse nosync nounwind memory(none) }
+
+!0 = distinct !{!0, !1, !2}
+!1 = !{!"llvm.loop.isvectorized", i32 1}
+!2 = !{!"llvm.loop.unroll.runtime.disable"}
+!3 = distinct !{!3, !1}
