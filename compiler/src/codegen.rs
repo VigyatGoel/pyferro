@@ -1,4 +1,4 @@
-use inkwell::IntPredicate;
+use inkwell::{FloatPredicate, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -88,50 +88,65 @@ pub fn compile_expr<'ctx>(
                         .const_int(if *b { 1 } else { 0 }, false)
                         .into()
                 }
-                _ => panic!("Only integer and bool constants supported"),
+                ast::Constant::Float(f) => ctx.f64_type().const_float(*f).into(),
+                _ => panic!("Only integer, bool, and float constants supported"),
             }
         }
         ast::Expr::BinOp(binop) => {
             let lhs = compile_expr(&binop.left, builder, scope, ctx, module);
             let rhs = compile_expr(&binop.right, builder, scope, ctx, module);
-            let lhs_int = lhs.into_int_value();
-            let rhs_int = rhs.into_int_value();
-            match binop.op {
-                ast::Operator::Add => builder
-                    .build_int_add(lhs_int, rhs_int, "addtmp")
-                    .unwrap()
-                    .into(),
-                ast::Operator::Sub => builder
-                    .build_int_sub(lhs_int, rhs_int, "subtmp")
-                    .unwrap()
-                    .into(),
-                ast::Operator::Mult => builder
-                    .build_int_mul(lhs_int, rhs_int, "multmp")
-                    .unwrap()
-                    .into(),
-                ast::Operator::Div => builder
-                    .build_int_signed_div(lhs_int, rhs_int, "divtmp")
-                    .unwrap()
-                    .into(),
-                _ => panic!("Unsupported operator"),
+            match (lhs, rhs) {
+                (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => match binop.op {
+                    ast::Operator::Add => builder.build_int_add(l, r, "addtmp").unwrap().into(),
+                    ast::Operator::Sub => builder.build_int_sub(l, r, "subtmp").unwrap().into(),
+                    ast::Operator::Mult => builder.build_int_mul(l, r, "multmp").unwrap().into(),
+                    ast::Operator::Div => {
+                        builder.build_int_signed_div(l, r, "divtmp").unwrap().into()
+                    }
+                    _ => panic!("Unsupported operator"),
+                },
+                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => match binop.op {
+                    ast::Operator::Add => builder.build_float_add(l, r, "faddtmp").unwrap().into(),
+                    ast::Operator::Sub => builder.build_float_sub(l, r, "fsubtmp").unwrap().into(),
+                    ast::Operator::Mult => {
+                        builder.build_float_mul(l, r, "fmultmp").unwrap().into()
+                    }
+                    ast::Operator::Div => {
+                        builder.build_float_div(l, r, "fdivtmp").unwrap().into()
+                    }
+                    _ => panic!("Unsupported operator for float"),
+                },
+                _ => panic!("Type mismatch: cannot mix int and float in binary operation"),
             }
         }
         ast::Expr::BoolOp(boolop) => {
             // and/or — fold left-to-right: (a and b and c) → (a and (b and c))
-            // All operands are coerced to i1 via icmp ne 0 if needed.
+            // All operands are coerced to i1 via icmp ne 0 (int) or fcmp one 0.0 (float).
             let to_i1 = |val: BasicValueEnum<'ctx>| -> inkwell::values::IntValue<'ctx> {
-                let iv = val.into_int_value();
-                if iv.get_type().get_bit_width() == 1 {
-                    iv
-                } else {
-                    builder
-                        .build_int_compare(
-                            IntPredicate::NE,
-                            iv,
-                            ctx.i64_type().const_int(0, false),
+                match val {
+                    BasicValueEnum::IntValue(iv) => {
+                        if iv.get_type().get_bit_width() == 1 {
+                            iv
+                        } else {
+                            builder
+                                .build_int_compare(
+                                    IntPredicate::NE,
+                                    iv,
+                                    ctx.i64_type().const_int(0, false),
+                                    "bool_coerce",
+                                )
+                                .unwrap()
+                        }
+                    }
+                    BasicValueEnum::FloatValue(fv) => builder
+                        .build_float_compare(
+                            FloatPredicate::ONE,
+                            fv,
+                            ctx.f64_type().const_float(0.0),
                             "bool_coerce",
                         )
-                        .unwrap()
+                        .unwrap(),
+                    _ => panic!("Cannot coerce value to bool"),
                 }
             };
 
@@ -151,26 +166,42 @@ pub fn compile_expr<'ctx>(
             let operand = compile_expr(&unaryop.operand, builder, scope, ctx, module);
             match unaryop.op {
                 ast::UnaryOp::Not => {
-                    // Coerce to i1 then flip
-                    let iv = operand.into_int_value();
-                    let as_i1 = if iv.get_type().get_bit_width() == 1 {
-                        iv
-                    } else {
-                        builder
-                            .build_int_compare(
-                                IntPredicate::NE,
-                                iv,
-                                ctx.i64_type().const_int(0, false),
+                    let as_i1 = match operand {
+                        BasicValueEnum::IntValue(iv) => {
+                            if iv.get_type().get_bit_width() == 1 {
+                                iv
+                            } else {
+                                builder
+                                    .build_int_compare(
+                                        IntPredicate::NE,
+                                        iv,
+                                        ctx.i64_type().const_int(0, false),
+                                        "bool_coerce",
+                                    )
+                                    .unwrap()
+                            }
+                        }
+                        BasicValueEnum::FloatValue(fv) => builder
+                            .build_float_compare(
+                                FloatPredicate::ONE,
+                                fv,
+                                ctx.f64_type().const_float(0.0),
                                 "bool_coerce",
                             )
-                            .unwrap()
+                            .unwrap(),
+                        _ => panic!("Cannot apply 'not' to this type"),
                     };
                     builder.build_not(as_i1, "nottmp").unwrap().into()
                 }
-                ast::UnaryOp::USub => {
-                    let iv = operand.into_int_value();
-                    builder.build_int_neg(iv, "negtmp").unwrap().into()
-                }
+                ast::UnaryOp::USub => match operand {
+                    BasicValueEnum::IntValue(iv) => {
+                        builder.build_int_neg(iv, "negtmp").unwrap().into()
+                    }
+                    BasicValueEnum::FloatValue(fv) => {
+                        builder.build_float_neg(fv, "fnegtmp").unwrap().into()
+                    }
+                    _ => panic!("Unsupported type for unary negation"),
+                },
                 ast::UnaryOp::UAdd => operand,
                 _ => panic!("Unsupported unary operator: {:?}", unaryop.op),
             }
@@ -180,22 +211,35 @@ pub fn compile_expr<'ctx>(
                 cmp.ops.len() == 1 && cmp.comparators.len() == 1,
                 "Only simple comparisons supported"
             );
-            let lhs = compile_expr(&cmp.left, builder, scope, ctx, module).into_int_value();
-            let rhs =
-                compile_expr(&cmp.comparators[0], builder, scope, ctx, module).into_int_value();
-            let predicate = match cmp.ops[0] {
-                ast::CmpOp::Gt => IntPredicate::SGT,
-                ast::CmpOp::Lt => IntPredicate::SLT,
-                ast::CmpOp::GtE => IntPredicate::SGE,
-                ast::CmpOp::LtE => IntPredicate::SLE,
-                ast::CmpOp::Eq => IntPredicate::EQ,
-                ast::CmpOp::NotEq => IntPredicate::NE,
-                _ => panic!("Unsupported comparison operator"),
-            };
-            builder
-                .build_int_compare(predicate, lhs, rhs, "cmptmp")
-                .unwrap()
-                .into()
+            let lhs = compile_expr(&cmp.left, builder, scope, ctx, module);
+            let rhs = compile_expr(&cmp.comparators[0], builder, scope, ctx, module);
+            match (lhs, rhs) {
+                (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                    let predicate = match cmp.ops[0] {
+                        ast::CmpOp::Gt => IntPredicate::SGT,
+                        ast::CmpOp::Lt => IntPredicate::SLT,
+                        ast::CmpOp::GtE => IntPredicate::SGE,
+                        ast::CmpOp::LtE => IntPredicate::SLE,
+                        ast::CmpOp::Eq => IntPredicate::EQ,
+                        ast::CmpOp::NotEq => IntPredicate::NE,
+                        _ => panic!("Unsupported comparison operator"),
+                    };
+                    builder.build_int_compare(predicate, l, r, "cmptmp").unwrap().into()
+                }
+                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                    let predicate = match cmp.ops[0] {
+                        ast::CmpOp::Gt => FloatPredicate::OGT,
+                        ast::CmpOp::Lt => FloatPredicate::OLT,
+                        ast::CmpOp::GtE => FloatPredicate::OGE,
+                        ast::CmpOp::LtE => FloatPredicate::OLE,
+                        ast::CmpOp::Eq => FloatPredicate::OEQ,
+                        ast::CmpOp::NotEq => FloatPredicate::ONE,
+                        _ => panic!("Unsupported float comparison operator"),
+                    };
+                    builder.build_float_compare(predicate, l, r, "fcmptmp").unwrap().into()
+                }
+                _ => panic!("Type mismatch in comparison: cannot compare int and float"),
+            }
         }
         ast::Expr::Call(call) => {
             let callee_name = if let ast::Expr::Name(n) = call.func.as_ref() {
@@ -222,12 +266,14 @@ pub fn compile_expr<'ctx>(
                 .map(|arg| compile_expr(arg, builder, scope, ctx, module).into())
                 .collect();
 
-            // Emit the call instruction
-            builder
+            // Emit the call instruction; void functions have no return value
+            let call_site = builder
                 .build_call(callee_fn, &call_args, "calltmp")
-                .unwrap()
-                .try_as_basic_value()
-                .unwrap_basic()
+                .unwrap();
+            match call_site.try_as_basic_value() {
+                inkwell::values::ValueKind::Basic(v) => v,
+                inkwell::values::ValueKind::Instruction(_) => ctx.i64_type().const_zero().into(),
+            }
         }
         _ => panic!("Unsupported expression: {:?}", expr),
     }
@@ -254,36 +300,48 @@ fn emit_print<'ctx>(
         }
     };
 
-    let val = compile_expr(&call.args[0], builder, scope, ctx, module).into_int_value();
+    let val = compile_expr(&call.args[0], builder, scope, ctx, module);
 
-    if val.get_type().get_bit_width() == 1 {
-        // Bool: print "true" or "false" using a conditional select on format strings
-        let true_str = builder
-            .build_global_string_ptr("true\n", "true_str")
-            .unwrap();
-        let false_str = builder
-            .build_global_string_ptr("false\n", "false_str")
-            .unwrap();
-        let fmt_ptr = builder
-            .build_select(
-                val,
-                true_str.as_pointer_value(),
-                false_str.as_pointer_value(),
-                "bool_fmt",
-            )
-            .unwrap();
-        builder
-            .build_call(printf_fn, &[fmt_ptr.into()], "print_call")
-            .unwrap();
-    } else {
-        // Int: use %lld
-        let fmt_str = builder
-            .build_global_string_ptr("%lld\n", "print_fmt")
-            .unwrap();
-        let fmt_ptr = fmt_str.as_pointer_value();
-        builder
-            .build_call(printf_fn, &[fmt_ptr.into(), val.into()], "print_call")
-            .unwrap();
+    match val {
+        BasicValueEnum::IntValue(iv) if iv.get_type().get_bit_width() == 1 => {
+            // Bool: print "true" or "false"
+            let true_str = builder
+                .build_global_string_ptr("true\n", "true_str")
+                .unwrap();
+            let false_str = builder
+                .build_global_string_ptr("false\n", "false_str")
+                .unwrap();
+            let fmt_ptr = builder
+                .build_select(
+                    iv,
+                    true_str.as_pointer_value(),
+                    false_str.as_pointer_value(),
+                    "bool_fmt",
+                )
+                .unwrap();
+            builder
+                .build_call(printf_fn, &[fmt_ptr.into()], "print_call")
+                .unwrap();
+        }
+        BasicValueEnum::IntValue(iv) => {
+            // Int: use %lld
+            let fmt_str = builder
+                .build_global_string_ptr("%lld\n", "print_fmt")
+                .unwrap();
+            builder
+                .build_call(printf_fn, &[fmt_str.as_pointer_value().into(), iv.into()], "print_call")
+                .unwrap();
+        }
+        BasicValueEnum::FloatValue(fv) => {
+            // Float: use %f
+            let fmt_str = builder
+                .build_global_string_ptr("%f\n", "float_fmt")
+                .unwrap();
+            builder
+                .build_call(printf_fn, &[fmt_str.as_pointer_value().into(), fv.into()], "print_call")
+                .unwrap();
+        }
+        _ => panic!("Unsupported type for print()"),
     }
 
     ctx.i64_type().const_int(0, false).into()
@@ -299,9 +357,17 @@ pub fn compile_stmt<'ctx>(
 ) -> bool {
     match stmt {
         ast::Stmt::Return(ret) => {
-            let expr = ret.value.as_ref().expect("Empty return");
-            let val = compile_expr(expr, builder, scope, ctx, module);
-            builder.build_return(Some(&val)).unwrap();
+            let is_none_value = match &ret.value {
+                None => true,
+                Some(v) => matches!(v.as_ref(), ast::Expr::Constant(c) if matches!(c.value, ast::Constant::None)),
+            };
+            if is_none_value {
+                builder.build_return(None).unwrap();
+            } else {
+                let expr = ret.value.as_ref().unwrap();
+                let val = compile_expr(expr, builder, scope, ctx, module);
+                builder.build_return(Some(&val)).unwrap();
+            }
             true
         }
         ast::Stmt::Assign(assign) => {
@@ -346,8 +412,6 @@ fn compile_assign<'ctx>(
     // locals BEFORE compiling the right-hand side expression.
     if scope.vars.contains_key(&name) && !scope.locals.contains_key(&name) {
         let original_val = scope.vars[&name];
-        let original_type = original_val.get_type();
-
         let entry_block = builder
             .get_insert_block()
             .unwrap()
@@ -362,9 +426,11 @@ fn compile_assign<'ctx>(
             None => builder.position_at_end(entry_block),
         }
 
-        let ptr = builder
-            .build_alloca(original_type.into_int_type(), &name)
-            .unwrap();
+        let ptr = match original_val {
+            BasicValueEnum::IntValue(iv) => builder.build_alloca(iv.get_type(), &name).unwrap(),
+            BasicValueEnum::FloatValue(fv) => builder.build_alloca(fv.get_type(), &name).unwrap(),
+            _ => panic!("Unsupported type for param migration"),
+        };
         builder.build_store(ptr, original_val).unwrap();
         builder.position_at_end(current_block);
 
@@ -394,9 +460,12 @@ fn compile_assign<'ctx>(
             None => builder.position_at_end(entry_block),
         }
 
-        // Alloca with the actual type of the RHS (i1 for bool, i64 for int)
-        let alloca_type = val.get_type().into_int_type();
-        let ptr = builder.build_alloca(alloca_type, &name).unwrap();
+        // Alloca with the actual type of the RHS (i1 for bool, i64 for int, f64 for float)
+        let ptr = match val {
+            BasicValueEnum::IntValue(iv) => builder.build_alloca(iv.get_type(), &name).unwrap(),
+            BasicValueEnum::FloatValue(fv) => builder.build_alloca(fv.get_type(), &name).unwrap(),
+            _ => panic!("Unsupported type for variable assignment"),
+        };
         builder.position_at_end(current_block);
         scope.locals.insert(name.clone(), ptr);
         ptr
@@ -493,12 +562,18 @@ fn compile_while<'ctx>(
     let current_block = builder.get_insert_block().unwrap();
     for name in &assigned {
         if scope.vars.contains_key(name) && !scope.locals.contains_key(name) {
-            let original_val = scope.vars[name].into_int_value();
+            let original_val = scope.vars[name];
             match entry_block.get_first_instruction() {
                 Some(first_instr) => builder.position_before(&first_instr),
                 None => builder.position_at_end(entry_block),
             }
-            let ptr = builder.build_alloca(ctx.i64_type(), name).unwrap();
+            let ptr = match original_val {
+                BasicValueEnum::IntValue(iv) => builder.build_alloca(iv.get_type(), name).unwrap(),
+                BasicValueEnum::FloatValue(fv) => {
+                    builder.build_alloca(fv.get_type(), name).unwrap()
+                }
+                _ => panic!("Unsupported type for while-loop var migration"),
+            };
             builder.build_store(ptr, original_val).unwrap();
             builder.position_at_end(current_block);
             scope.locals.insert(name.clone(), ptr);
@@ -562,12 +637,18 @@ fn compile_for<'ctx>(
     let current_block = builder.get_insert_block().unwrap();
     for name in &assigned {
         if scope.vars.contains_key(name) && !scope.locals.contains_key(name) {
-            let original_val = scope.vars[name].into_int_value();
+            let original_val = scope.vars[name];
             match entry_block.get_first_instruction() {
                 Some(first_instr) => builder.position_before(&first_instr),
                 None => builder.position_at_end(entry_block),
             }
-            let ptr = builder.build_alloca(ctx.i64_type(), name).unwrap();
+            let ptr = match original_val {
+                BasicValueEnum::IntValue(iv) => builder.build_alloca(iv.get_type(), name).unwrap(),
+                BasicValueEnum::FloatValue(fv) => {
+                    builder.build_alloca(fv.get_type(), name).unwrap()
+                }
+                _ => panic!("Unsupported type for for-loop var migration"),
+            };
             builder.build_store(ptr, original_val).unwrap();
             builder.position_at_end(current_block);
             scope.locals.insert(name.clone(), ptr);
@@ -659,12 +740,14 @@ pub fn build_all_functions<'ctx>(
     // First pass: register all function signatures
     let i64_type = context.i64_type();
     let i1_type = context.bool_type();
+    let f64_type = context.f64_type();
 
     let py_type_to_llvm = |annotation: &ast::Expr| -> inkwell::types::BasicTypeEnum<'ctx> {
         if let ast::Expr::Name(n) = annotation {
             match n.id.as_str() {
                 "bool" => i1_type.into(),
-                _ => i64_type.into(), // int and anything else → i64
+                "float" => f64_type.into(),
+                _ => i64_type.into(),
             }
         } else {
             i64_type.into()
@@ -685,15 +768,24 @@ pub fn build_all_functions<'ctx>(
             })
             .collect();
 
-        let ret_type = func_def
-            .returns
-            .as_ref()
-            .map(|r| py_type_to_llvm(r))
-            .unwrap_or(i64_type.into());
+        let is_void = matches!(
+            func_def.returns.as_deref(),
+            Some(ast::Expr::Constant(c)) if matches!(c.value, ast::Constant::None)
+        );
 
-        let fn_type = match ret_type {
-            inkwell::types::BasicTypeEnum::IntType(it) => it.fn_type(&arg_types, false),
-            _ => i64_type.fn_type(&arg_types, false),
+        let fn_type = if is_void {
+            context.void_type().fn_type(&arg_types, false)
+        } else {
+            let ret_type = func_def
+                .returns
+                .as_ref()
+                .map(|r| py_type_to_llvm(r))
+                .unwrap_or(i64_type.into());
+            match ret_type {
+                inkwell::types::BasicTypeEnum::IntType(it) => it.fn_type(&arg_types, false),
+                inkwell::types::BasicTypeEnum::FloatType(ft) => ft.fn_type(&arg_types, false),
+                _ => i64_type.fn_type(&arg_types, false),
+            }
         };
         module.add_function(func_def.name.as_str(), fn_type, None);
     }
@@ -730,9 +822,22 @@ pub fn build_python_function<'ctx>(
         scope.vars.insert(name, p);
     }
 
+    let mut terminated = false;
     for stmt in &func_def.body {
         if compile_stmt(stmt, builder, &mut scope, context, llvm_fn, module) {
+            terminated = true;
             break;
+        }
+    }
+
+    // Void functions get an implicit return if no explicit terminator was emitted
+    if !terminated {
+        let is_void = matches!(
+            func_def.returns.as_deref(),
+            Some(ast::Expr::Constant(c)) if matches!(c.value, ast::Constant::None)
+        );
+        if is_void {
+            builder.build_return(None).unwrap();
         }
     }
 

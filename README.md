@@ -4,19 +4,19 @@ A Python-to-native compiler written in Rust. Parses a typed subset of Python, va
 
 ## Features
 
-- **Types**: `int` (i64) and `bool` (i1)
+- **Types**: `int` (i64), `bool` (i1), `float` (f64), and `None` (void)
 - **Arithmetic**: `+`, `-`, `*`, `/`
 - **Comparisons**: `<`, `>`, `<=`, `>=`, `==`, `!=`
 - **Boolean operators**: `and`, `or`, `not`
 - **Control flow**: `if/else`, `while`, `for range()`
-- **Functions**: typed definitions, mutual calls, recursion
-- **Builtin**: `print(x)` — prints int or bool to stdout
+- **Functions**: typed definitions, mutual calls, recursion, void (`-> None`) functions
+- **Builtin**: `print(x)` — prints int, bool, or float to stdout
 - **Optimization**: LLVM `default<O2>` pass pipeline
 - **CLI**: compile to binary, emit LLVM IR, or produce a linkable object file
 
 ## Supported Python
 
-All arguments and return types must be annotated as `int` or `bool`. Every control-flow path must return.
+All arguments and return types must be annotated as `int`, `bool`, `float`, or `None`. Non-void functions must return on every control-flow path. Mixed `int`/`float` expressions are not allowed.
 
 ```python
 def factorial(n: int) -> int:
@@ -48,6 +48,20 @@ def sum_range(n: int) -> int:
     return total
 
 print(sum_range(100))
+```
+
+```python
+def average(a: float, b: float) -> float:
+    return (a + b) / 2.0
+
+print(average(3.0, 7.0))
+```
+
+```python
+def greet(n: int) -> None:
+    print(n)
+
+greet(42)
 ```
 
 ## Prerequisites
@@ -88,29 +102,29 @@ cd compiler
 cargo build --release
 ```
 
-The `pyllvm` binary is at `compiler/target/release/pyllvm`.
+The `pyferro` binary is at `compiler/target/release/pyferro`.
 
 ## Usage
 
 ### Compile to native binary
 ```bash
-./target/release/pyllvm path/to/program.py
+./target/release/pyferro path/to/program.py
 # Produces program.o and program (executable)
 ```
 
 ### Custom output name
 ```bash
-./target/release/pyllvm path/to/program.py -o my_program
+./target/release/pyferro path/to/program.py -o my_program
 ```
 
 ### Emit LLVM IR
 ```bash
-./target/release/pyllvm path/to/program.py --emit-ir
+./target/release/pyferro path/to/program.py --emit-ir
 # Writes program.ll
 ```
 
 ### Library mode (no top-level call)
-If the file has no top-level function call, `pyllvm` skips linking and emits only the object file, ready for external linking.
+If the file has no top-level function call, `pyferro` skips linking and emits only the object file, ready for external linking.
 
 ## Tests
 
@@ -134,7 +148,7 @@ End-to-end tests compile fixture `.py` files, run the resulting binary, and asse
 ./benchmark.sh 50000000 # custom N
 ```
 
-Compares `pyllvm`-compiled binaries against CPython. Reports median CPU user time and speedup ratio.
+Compares `pyferro`-compiled binaries against CPython. Reports median CPU user time and speedup ratio.
 
 ## Architecture
 

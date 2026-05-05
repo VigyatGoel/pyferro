@@ -11,7 +11,7 @@ N=${1:-100000000}
 RUNS=5
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 COMPILER="$REPO_ROOT/compiler"
-PYLLVM="$COMPILER/target/release/pyferro"
+PYFERRO="$COMPILER/target/release/pyferro"
 BENCH_DIR="$(mktemp -d)"
 trap 'rm -rf "$BENCH_DIR"' EXIT
 
@@ -60,7 +60,7 @@ run_bench() {
     printf "  %-28s  " "$label"
     # Compile silently
     echo "$src" > "$BENCH_DIR/$name.py"
-    "$PYLLVM" "$BENCH_DIR/$name.py" --output "$BENCH_DIR/$name" > /dev/null 2>&1
+    "$PYFERRO" "$BENCH_DIR/$name.py" --output "$BENCH_DIR/$name" > /dev/null 2>&1
     # Time both
     local t_llvm t_py spdup
     t_llvm=$(timeit "$BENCH_DIR/$name")

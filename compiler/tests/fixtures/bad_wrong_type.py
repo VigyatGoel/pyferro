@@ -1,2 +1,2 @@
-def compute(x: float, y: int) -> int:
+def compute(x: str, y: int) -> int:
     return y

@@ -7,7 +7,7 @@ use clap::Parser;
 use inkwell::context::Context;
 
 #[derive(Parser, Debug)]
-#[command(name = "pyllvm", version, about)]
+#[command(name = "pyferro", version, about)]
 struct Args {
     input: String,
 

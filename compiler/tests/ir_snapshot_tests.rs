@@ -99,3 +99,15 @@ fn ir_snapshot_bool_param() {
     let ir = emit_ir("bool_param");
     insta::assert_snapshot!(ir);
 }
+
+#[test]
+fn ir_snapshot_float_basic() {
+    let ir = emit_ir("float_basic");
+    insta::assert_snapshot!(ir);
+}
+
+#[test]
+fn ir_snapshot_void_print() {
+    let ir = emit_ir("void_print");
+    insta::assert_snapshot!(ir);
+}

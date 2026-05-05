@@ -134,6 +134,18 @@ fn e2e_bool_param_identity_true() {
     assert_eq!(compile_and_run("bool_param"), "true");
 }
 
+// ── Float tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn e2e_float_average_3_7_equals_5() {
+    assert_eq!(compile_and_run("float_basic"), "5.000000");
+}
+
+#[test]
+fn e2e_multi_print_two_ints() {
+    assert_eq!(compile_and_run("multi_print"), "1\n2");
+}
+
 // ── Negative tests — compiler must reject invalid Python ─────────────────────
 
 #[test]
@@ -158,4 +170,9 @@ fn negative_missing_return_path_fails() {
 fn negative_empty_body_fails() {
     let (code, _stderr) = expect_compile_failure("bad_empty_body");
     assert_ne!(code, 0, "expected non-zero exit for bad_empty_body.py");
+}
+
+#[test]
+fn e2e_void_function_prints_value() {
+    assert_eq!(compile_and_run("void_print"), "42");
 }

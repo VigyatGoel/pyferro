@@ -24,35 +24,43 @@ fn block_definitely_terminates(stmts: &[ast::Stmt]) -> bool {
     false
 }
 
+fn is_void_return(func_def: &ast::StmtFunctionDef) -> bool {
+    matches!(
+        func_def.returns.as_deref(),
+        Some(ast::Expr::Constant(c)) if matches!(c.value, ast::Constant::None)
+    )
+}
+
 pub fn check_function(func_def: &ast::StmtFunctionDef, known_functions: &HashSet<String>) {
-    // Check all arguments have `int` type hints
+    // Check all arguments have int, bool, or float type hints
     for awd in &func_def.args.args {
         let arg = &awd.def;
         let annotation = arg.annotation.as_ref().expect(&format!(
-            "Argument '{}' has no type hint — all arguments must be typed as int",
+            "Argument '{}' has no type hint — all arguments must be typed as int, bool, or float",
             arg.arg
         ));
 
         match annotation.as_ref() {
-            ast::Expr::Name(n) if matches!(n.id.as_str(), "int" | "bool") => {}
+            ast::Expr::Name(n) if matches!(n.id.as_str(), "int" | "bool" | "float") => {}
             ast::Expr::Name(n) => panic!(
-                "Argument '{}' has unsupported type '{}' — only int and bool are supported",
+                "Argument '{}' has unsupported type '{}' — only int, bool, and float are supported",
                 arg.arg, n.id
             ),
             _ => panic!("Argument '{}' has an unsupported type annotation", arg.arg),
         }
     }
 
-    // Check return type is `int`
+    // Check return type is int, bool, float, or None
     match func_def.returns.as_ref() {
         None => panic!(
-            "Function '{}' has no return type hint — must be -> int",
+            "Function '{}' has no return type hint — must be -> int, -> bool, -> float, or -> None",
             func_def.name
         ),
         Some(ret) => match ret.as_ref() {
-            ast::Expr::Name(n) if matches!(n.id.as_str(), "int" | "bool") => {}
+            ast::Expr::Name(n) if matches!(n.id.as_str(), "int" | "bool" | "float") => {}
+            ast::Expr::Constant(c) if matches!(c.value, ast::Constant::None) => {}
             ast::Expr::Name(n) => panic!(
-                "Return type '{}' is not supported — only int and bool are supported",
+                "Return type '{}' is not supported — only int, bool, float, and None are supported",
                 n.id
             ),
             _ => panic!("Unsupported return type annotation"),
@@ -66,7 +74,8 @@ pub fn check_function(func_def: &ast::StmtFunctionDef, known_functions: &HashSet
     // Validate each statement and check called functions exist
     check_stmts(&func_def.body, &func_def.name, known_functions);
 
-    if !block_definitely_terminates(&func_def.body) {
+    // Void functions don't need to return on all paths
+    if !is_void_return(func_def) && !block_definitely_terminates(&func_def.body) {
         panic!(
             "Function '{}' must return on all control-flow paths",
             func_def.name
@@ -236,9 +245,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "unsupported type")]
-    fn float_arg_annotation_panics() {
-        let src = "def foo(x: float) -> int:\n    return x\n";
+    fn float_arg_annotation_passes() {
+        let src = "def foo(x: float) -> float:\n    return x\n";
         let func = parse_func(src);
         super::check_function(&func, &known(&["foo"]));
     }
