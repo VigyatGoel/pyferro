@@ -1,6 +1,6 @@
 # pyferro
 
-A Python-to-native compiler written in Rust. Parses a typed subset of Python, validates it, compiles it to LLVM IR via `inkwell`, runs optimizations, and links a native binary using the system linker.
+A Python-to-native compiler written in Rust. It uses `rustpython-parser` to parse a typed subset of Python, validates it, compiles it to LLVM IR via `inkwell`, runs optimizations, and links a native binary using the system linker.
 
 ## Features
 
@@ -12,6 +12,7 @@ A Python-to-native compiler written in Rust. Parses a typed subset of Python, va
 - **Functions**: typed definitions, mutual calls, recursion, void (`-> None`) functions
 - **Builtin**: `print(x)` — prints int, bool, or float to stdout
 - **Optimization**: LLVM `default<O2>` pass pipeline
+- **Parsing**: Robust AST generation using `rustpython-parser`
 - **CLI**: compile to binary, emit LLVM IR, or produce a linkable object file
 
 ## Supported Python
@@ -156,7 +157,7 @@ Compares `pyferro`-compiled binaries against CPython. Reports median CPU user ti
 Python source
     │
     ▼
-parser.rs   — rustpython-parser → AST
+parser.rs   — [rustpython-parser](https://github.com/RustPython/RustPython/tree/main/compiler/parser) → AST
     │
     ▼
 semantic.rs — type checks, return-path analysis, unknown-call detection
