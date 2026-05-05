@@ -157,13 +157,13 @@ Compares `pyferro`-compiled binaries against CPython. Reports median CPU user ti
 Python source
     │
     ▼
-parser.rs   — [rustpython-parser](https://github.com/RustPython/RustPython/tree/main/compiler/parser) → AST
+parser.rs   — rustpython-parser → AST
     │
     ▼
 semantic.rs — type checks, return-path analysis, unknown-call detection
     │
     ▼
-codegen.rs  — inkwell: AST → LLVM IR (two-pass: signatures then bodies)
+codegen.rs  — inkwell: AST → LLVM IR
     │
     ▼
 backend.rs  — target machine init, default<O2> passes, object emit, cc link
